@@ -7,7 +7,6 @@ Provides compile() function that returns CompiledModel objects for Stan sampling
 import ctypes
 import os
 import subprocess
-import shutil
 from typing import Optional, Dict, Any, Union
 from pathlib import Path
 
@@ -219,20 +218,17 @@ def compile(stan_file: str, force: bool = False) -> CompiledModel:
     if not stan_path.suffix == '.stan':
         raise StoshError(f"File must have .stan extension: {stan_file}")
     
-    # Find the directory containing the makefile
-    # Priority: STAN_ROOT env var, then parent of this Python package
+    # Find makefile directory
     if 'STAN_ROOT' in os.environ:
         makefile_dir = Path(os.environ['STAN_ROOT']).resolve()
     else:
-        python_dir = Path(__file__).parent.resolve()
-        makefile_dir = python_dir.parent
+        makefile_dir = Path(__file__).parent.parent.resolve()
     
-    # Check that makefile exists
     makefile_path = makefile_dir / "makefile"
     if not makefile_path.exists():
         raise StoshError(f"Makefile not found at: {makefile_path}")
     
-    # Expected output paths
+    # Expected output path (next to the .stan file)
     model_name = stan_path.stem
     so_path = stan_path.parent / f"{model_name}_model.so"
     
@@ -245,30 +241,9 @@ def compile(stan_file: str, force: bool = False) -> CompiledModel:
     print(f"Compiling Stan model: {stan_file}")
     print(f"Using makefile directory: {makefile_dir}")
     
-    # Calculate the target name for make - this should be the path relative to makefile_dir
     try:
-        # Get the relative path from makefile directory to the .stan file
-        relative_stan_path = stan_path.relative_to(makefile_dir)
-        # Create the target: path/to/model_model.so
-        target_path = relative_stan_path.parent / f"{model_name}_model.so"
-        make_target = str(target_path)
-        
-    except ValueError:
-        # .stan file is not under the makefile directory
-        # Try to use the relative path from current working directory
-        try:
-            cwd = Path.cwd()
-            relative_to_cwd = stan_path.relative_to(cwd)
-            target_path = relative_to_cwd.parent / f"{model_name}_model.so"
-            make_target = str(target_path)
-            print(f"Warning: .stan file is outside makefile directory. Using target: {make_target}")
-        except ValueError:
-            # Fall back to just the model name
-            make_target = f"{model_name}_model.so"
-            print(f"Warning: Using fallback target: {make_target}")
-    
-    # Run make command from the makefile directory
-    try:
+        # Use absolute path for make target
+        make_target = str(so_path)
         cmd = ["make", make_target]
         
         print(f"Running: {' '.join(cmd)} (from {makefile_dir})")
